@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Bedrock 聊天 (DEMO)</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Inter 字體 -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        #chat-container {
+            width: 100%;
+            max-width: 800px;
+            height: 90vh; /* 調整高度以容納憑證輸入 */
+            display: flex;
+            flex-direction: column;
+            border-radius: 1.5rem;
+            background-color: #ffffff;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+        #credentials-area {
+            padding: 1rem 2rem;
+            background-color: #fef2f2;
+            border-bottom: 1px solid #fee2e2;
+        }
+        .credentials-input {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid #fca5a5;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        #credentials-warning {
+            background-color: #fef9c3;
+            color: #d97706;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+        }
+        #chat-history {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .message-bubble {
+            max-width: 85%;
+            padding: 1rem 1.25rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #e0f2fe;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.5rem;
+        }
+        .ai-message {
+            background-color: #f3f4f6;
+            align-self: flex-start;
+            border-bottom-left-radius: 0.5rem;
+        }
+        .message-bubble h1, .message-bubble h2, .message-bubble h3 {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .message-bubble p {
+            margin-bottom: 0.5rem;
+        }
+        .message-bubble table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+        .message-bubble th, .message-bubble td {
+            border: 1px solid #d1d5db;
+            padding: 0.75rem;
+            text-align: left;
+        }
+        .message-bubble th {
+            background-color: #e5e7eb;
+            font-weight: 600;
+        }
+        #input-area {
+            display: flex;
+            align-items: center;
+            padding: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+            gap: 0.75rem;
+        }
+        #input-area textarea {
+            flex: 1;
+            padding: 1rem;
+            border-radius: 1rem;
+            border: 1px solid #d1d5db;
+            resize: none;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        #input-area button {
+            padding: 0.75rem 1.5rem;
+            border-radius: 1rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #send-button {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+        #send-button:hover {
+            background-color: #2563eb;
+        }
+        #reset-button {
+            background-color: #f87171;
+            color: #ffffff;
+            margin-bottom: 0.75rem;
+            transition: background-color 0.2s;
+        }
+        #reset-button:hover {
+            background-color: #ef4444;
+        }
+        #file-upload-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem;
+            border-radius: 1rem;
+            background-color: #d1d5db;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #file-upload-label:hover {
+            background-color: #9ca3af;
+        }
+        #file-name-display {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-left: 0.5rem;
+        }
+    </style>
+    <!-- 引入 AWS SDK for JavaScript v3 -->
+    <script type="importmap">
+    {
+      "imports": {
+        "@aws-sdk/client-bedrock-runtime": "https://cdn.skypack.dev/@aws-sdk/client-bedrock-runtime?min"
+      }
+    }
+    </script>
+</head>
+<body>
+
+<div id="chat-container">
+    <!-- 標題 -->
+    <div class="p-6 bg-gray-100 border-b border-gray-200 flex flex-col items-center justify-center">
+        <h1 class="text-3xl font-bold text-gray-800">與 Amazon Bedrock 聊天</h1>
+        <button id="reset-button" class="mt-4 px-6 py-2 rounded-xl text-sm font-medium">重啟話題</button>
+    </div>
+
+    <!-- 憑證輸入區塊 -->
+    <div id="credentials-area">
+        <div id="credentials-warning" class="font-bold">
+            警告：此頁面直接在前端使用您的 AWS 憑證，這極不安全。
+            此範例僅供開發和演示使用，請勿在生產環境中使用。
+        </div>
+        <input type="text" id="accessKeyId" placeholder="AWS Access Key ID" class="credentials-input">
+        <input type="text" id="secretAccessKey" placeholder="AWS Secret Access Key" class="credentials-input">
+        <input type="text" id="region" placeholder="AWS Region (e.g., us-east-1)" class="credentials-input">
+        <div id="status-message" class="text-sm text-center mt-2 text-red-500 hidden"></div>
+    </div>
+
+    <!-- 聊天紀錄區塊 -->
+    <div id="chat-history">
+        <!-- 訊息會在這裡動態新增 -->
+    </div>
+
+    <!-- 輸入區塊 -->
+    <div id="input-area">
+        <input type="file" id="file-upload" class="hidden">
+        <label for="file-upload" id="file-upload-label">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+        </label>
+        <textarea id="user-input" rows="1" placeholder="輸入您的訊息..." class="focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        <button id="send-button">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+    </div>
+</div>
+
+<script type="module">
+    import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const chatHistory = document.getElementById('chat-history');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const resetButton = document.getElementById('reset-button');
+        const fileInput = document.getElementById('file-upload');
+        const fileUploadLabel = document.getElementById('file-upload-label');
+        const accessKeyIdInput = document.getElementById('accessKeyId');
+        const secretAccessKeyInput = document.getElementById('secretAccessKey');
+        const regionInput = document.getElementById('region');
+        const statusMessage = document.getElementById('status-message');
+        let uploadedFile = null;
+        let isTyping = false;
+        let bedrockClient = null;
+
+        // 將 Markdown 內容轉換為 HTML
+        const convertMarkdownToHtml = (markdownText) => {
+            let htmlContent = markdownText;
+
+            // 轉換表格
+            const tableRegex = /\|(.+)\n\|---+\|(.+)\n((?:\|.*\|\n)*)/g;
+            htmlContent = htmlContent.replace(tableRegex, (match, header, separator, body) => {
+                let tableHtml = '<table><thead><tr>';
+                const headers = header.split('|').map(h => h.trim()).filter(h => h);
+                headers.forEach(h => tableHtml += `<th>${h}</th>`);
+                tableHtml += '</tr></thead><tbody>';
+
+                const bodyRows = body.split('\n').filter(row => row.trim() !== '');
+                bodyRows.forEach(row => {
+                    tableHtml += '<tr>';
+                    const cells = row.split('|').map(c => c.trim()).filter(c => c);
+                    cells.forEach(c => tableHtml += `<td>${c}</td>`);
+                    tableHtml += '</tr>';
+                });
+                tableHtml += '</tbody></table>';
+                return tableHtml;
+            });
+            
+            // 轉換粗體文字
+            htmlContent = htmlContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            htmlContent = htmlContent.replace(/__(.*?)__/g, '<strong>$1</strong>');
+            
+            // 轉換換行
+            htmlContent = htmlContent.replace(/\n/g, '<br>');
+
+            return htmlContent;
+        };
+
+        // 在聊天歷史中新增訊息
+        const addMessage = (text, sender) => {
+            const bubble = document.createElement('div');
+            bubble.classList.add('message-bubble');
+            if (sender === 'user') {
+                bubble.classList.add('user-message');
+            } else {
+                bubble.classList.add('ai-message');
+                text = convertMarkdownToHtml(text);
+            }
+            bubble.innerHTML = text;
+            chatHistory.appendChild(bubble);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        };
+
+        // 處理訊息發送
+        const sendMessage = async () => {
+            if (isTyping) return;
+
+            const message = userInput.value.trim();
+            const accessKeyId = accessKeyIdInput.value.trim();
+            const secretAccessKey = secretAccessKeyInput.value.trim();
+            const region = regionInput.value.trim();
+
+            if (!accessKeyId || !secretAccessKey || !region) {
+                statusMessage.textContent = '請輸入所有 AWS 憑證和地區！';
+                statusMessage.classList.remove('hidden');
+                return;
+            } else {
+                statusMessage.classList.add('hidden');
+            }
+
+            if (!message && !uploadedFile) return;
+
+            isTyping = true;
+            
+            addMessage(message, 'user');
+            
+            userInput.value = '';
+            sendButton.disabled = true;
+            
+            const typingIndicator = document.createElement('div');
+            typingIndicator.classList.add('ai-message', 'message-bubble');
+            typingIndicator.innerHTML = `<em>AI 正在輸入...</em>`;
+            chatHistory.appendChild(typingIndicator);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            try {
+                const response = await callBedrockAPI(message, uploadedFile, { accessKeyId, secretAccessKey, region });
+                
+                chatHistory.removeChild(typingIndicator);
+                addMessage(response, 'ai');
+            } catch (error) {
+                console.error('Error calling Bedrock API:', error);
+                chatHistory.removeChild(typingIndicator);
+                addMessage(`發生錯誤：${error.message}`, 'ai');
+            }
+
+            uploadedFile = null;
+            fileUploadLabel.innerHTML = `<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>`;
+            sendButton.disabled = false;
+            userInput.focus();
+            isTyping = false;
+        };
+
+        const callBedrockAPI = async (userMessage, file, credentials) => {
+            // 初始化 Bedrock 客戶端
+            bedrockClient = new BedrockRuntimeClient({
+                region: credentials.region,
+                credentials: {
+                    accessKeyId: credentials.accessKeyId,
+                    secretAccessKey: credentials.secretAccessKey,
+                }
+            });
+
+            // 選擇一個 Bedrock 模型
+            // 您可以根據需求更改模型ID，例如：amazon.titan-text-express-v1 或 anthropic.claude-instant-v1
+            const modelId = "anthropic.claude-v2";
+            
+            const payload = {
+                "prompt": `Human: ${userMessage}. ${file ? '文件名稱：' + file.name : ''} \n\nAssistant:`,
+                "max_tokens_to_sample": 500,
+                "temperature": 0.5,
+                "top_p": 1
+            };
+
+            const input = {
+                body: JSON.stringify(payload),
+                contentType: "application/json",
+                accept: "application/json",
+                modelId: modelId,
+            };
+
+            const command = new InvokeModelCommand(input);
+
+            try {
+                const response = await bedrockClient.send(command);
+                const decodedResponseBody = new TextDecoder().decode(response.body);
+                const responseBody = JSON.parse(decodedResponseBody);
+                return responseBody.completion;
+            } catch (error) {
+                console.error("Bedrock API Error:", error);
+                throw new Error(`Bedrock API 呼叫失敗：${error.message}`);
+            }
+        };
+
+        // 處理重啟對話
+        const resetChat = () => {
+            chatHistory.innerHTML = '';
+            userInput.value = '';
+            uploadedFile = null;
+            fileUploadLabel.innerHTML = `<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>`;
+            addMessage("歡迎使用 Amazon Bedrock 聊天。", 'ai');
+        };
+
+        // 處理檔案上傳
+        fileInput.addEventListener('change', (event) => {
+            uploadedFile = event.target.files[0];
+            if (uploadedFile) {
+                fileUploadLabel.innerHTML = `
+                    <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span id="file-name-display">${uploadedFile.name}</span>
+                `;
+            } else {
+                fileUploadLabel.innerHTML = `<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>`;
+            }
+        });
+
+        // 事件監聽器
+        sendButton.addEventListener('click', sendMessage);
+        resetButton.addEventListener('click', resetChat);
+        userInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // 初始訊息
+        resetChat();
+    });
+</script>
+
+</body>
+</html>
